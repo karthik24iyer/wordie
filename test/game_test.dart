@@ -83,4 +83,36 @@ void main() {
     expect(r.hintsLeft, 1);
     expect(r.status, Status.playing);
   });
+
+  test('forfeit is a DNF; daily streak counts days with a finished game', () {
+    Game won(String w) => Game(w, GameConfig(length: w.length), {w})
+      ..row = w.split('')
+      ..submit();
+    Game dnf() => Game('cat', const GameConfig(length: 3), {'cat'})..forfeit();
+    final st = Stats();
+    final d1 = DateTime(2026, 3, 1, 9);
+
+    final f = dnf();
+    expect(f.status, Status.dnf);
+    expect(f.results.last, everyElement(LetterState.correct));
+    st.record(f, d1);
+    expect([st.played, st.dnf, st.wins, st.streakOn(d1)], [1, 1, 0, 0]); // DNF alone doesn't make a day
+
+    st.record(won('apple'), d1);
+    st.record(won('cats'), d1); // same day: streak stays 1
+    expect(st.streakOn(d1), 1);
+    expect(st.avgLength, 4.5);
+
+    st.record(won('plane'), DateTime(2026, 3, 2, 23));
+    expect([st.streak, st.maxStreak], [2, 2]);
+    expect(st.streakOn(DateTime(2026, 3, 3)), 2); // still alive the next day
+    expect(st.streakOn(DateTime(2026, 3, 4)), 0); // missed a day
+
+    st.record(dnf(), DateTime(2026, 3, 5));
+    st.record(won('plane'), DateTime(2026, 3, 5));
+    expect([st.streak, st.maxStreak, st.played, st.dnf], [1, 2, 6, 2]);
+
+    final r = Stats.fromJson(jsonDecode(jsonEncode(st.toJson())));
+    expect([r.streak, r.maxStreak, r.lastDay, r.dnf, r.avgLength], [1, 2, '2026-03-05', 2, st.avgLength]);
+  });
 }

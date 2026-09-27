@@ -80,5 +80,23 @@ void main() {
     await tester.tap(find.text('Start'));
     await shot('11_six_letter_grid');
     expect(find.text('6 letters · row 1/6'), findsOneWidget);
+
+    // abandon: reload -> confirm -> answer shown green, dismiss sheet -> NEW GAME replaces SUBMIT
+    await type('planet'); // ponytail: flaky only if the random answer is 'planet'
+    await tester.tap(find.text('SUBMIT'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.refresh_rounded));
+    await shot('12_abandon_confirm');
+    await tester.tap(find.text('Here We Go Again'));
+    await shot('13_abandon_sheet');
+    await tester.tapAt(const Offset(10, 10));
+    await shot('14_abandoned_board');
+    expect(find.text('NEW GAME'), findsOneWidget);
+    expect(find.text('SUBMIT'), findsNothing);
+    await tester.tap(find.byIcon(Icons.home_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Statistics'));
+    await shot('15_stats_after_dnf');
+    expect(find.text('DNF'), findsOneWidget);
   });
 }

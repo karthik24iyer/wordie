@@ -25,7 +25,8 @@ Color stateColor(LetterState s) => switch (s) {
 class Store {
   final SharedPreferences p;
   final Map<int, WordList> words;
-  Store(this.p, this.words);
+  final Map<String, String> meanings;
+  Store(this.p, this.words, this.meanings);
 
   Map<String, dynamic>? _get(String k) => p.getString(k) == null ? null : jsonDecode(p.getString(k)!);
 
@@ -52,10 +53,10 @@ class Store {
     return Game(list.answers[Random().nextInt(list.answers.length)], c, list.guesses);
   }
 
-  /// Leaving an in-progress game for a new one counts as a loss so streaks can't be farmed.
+  /// Leaving an in-progress game with guesses counts as a DNF (and a loss in Played/Win %).
   void abandonSaved() {
     final g = saved;
-    if (g != null && g.guesses.isNotEmpty) record(g);
+    if (g != null && g.guesses.isNotEmpty) record(g..forfeit());
     p.remove('saved');
   }
 }
@@ -100,9 +101,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _newGame() async {
+    if (store.saved?.guesses.isNotEmpty ?? false) {
+      if (!await confirmAbandon(context) || !mounted) return;
+      store.abandonSaved();
+      setState(() {}); // Continue is gone either way
+    }
     final c = await showConfigSheet(context, store.config, title: 'New Game', action: 'Start');
     if (c == null || !mounted) return;
-    store.abandonSaved();
+    store.abandonSaved(); // drops a 0-guess save
     store.config = c;
     _play(store.fresh(c));
   }
@@ -243,6 +249,12 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _newGame() async {
+    if (game.status == Status.playing && game.guesses.isNotEmpty) {
+      if (!await confirmAbandon(context)) return;
+      game.forfeit(); // listener autosave drops the save
+      store.record(game);
+    }
+    if (!mounted) return;
     final c = await showConfigSheet(context, store.config, title: 'New Game', action: 'Start');
     if (c == null) return;
     store.abandonSaved();
@@ -255,6 +267,7 @@ class _GameScreenState extends State<GameScreen> {
     builder: (ctx) => _ResultDialog(
       game,
       store.stats,
+      store.meanings[game.answer],
       onNew: () {
         Navigator.pop(ctx);
         _newGame();
@@ -354,14 +367,14 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ),
       ),
-      _WoodButton(icon: Icons.add_rounded, onTap: _newGame),
+      _WoodButton(icon: Icons.refresh_rounded, onTap: _newGame),
     ],
   );
 
   Widget _status() => Text(
     switch (game.status) {
       Status.won => 'Solved in ${game.guesses.length}/${game.length}',
-      Status.lost => 'The word was ${game.answer.toUpperCase()}',
+      Status.lost || Status.dnf => 'The word was ${game.answer.toUpperCase()}',
       Status.playing => '${game.length} letters · row ${game.rowIndex + 1}/${game.length}',
     },
     style: txt(15, color: Wood.walnut, weight: 500),
@@ -375,18 +388,26 @@ class _GameScreenState extends State<GameScreen> {
         const SizedBox(width: 14),
         Expanded(
           // ponytail: still tappable when grey so a full-but-unknown word shakes + says why
-          child: _Pressable(
-            onTap: _submit,
-            child: SizedBox(
-              height: 54,
-              child: WoodBox(
-                color: game.canSubmit ? Wood.green : Wood.grey,
-                radius: 27,
-                seed: 11,
-                child: Text('SUBMIT', style: txt(22, color: game.canSubmit ? Wood.ink : Colors.white, weight: 700)),
-              ),
-            ),
-          ),
+          child: game.status != Status.playing
+              ? _Pressable(
+                  onTap: _newGame,
+                  child: SizedBox(
+                    height: 54,
+                    child: WoodBox(color: Wood.green, radius: 27, seed: 12, child: Text('NEW GAME', style: txt(22, weight: 700))),
+                  ),
+                )
+              : _Pressable(
+                  onTap: _submit,
+                  child: SizedBox(
+                    height: 54,
+                    child: WoodBox(
+                      color: game.canSubmit ? Wood.green : Wood.grey,
+                      radius: 27,
+                      seed: 11,
+                      child: Text('SUBMIT', style: txt(22, color: game.canSubmit ? Wood.ink : Colors.white, weight: 700)),
+                    ),
+                  ),
+                ),
         ),
         const SizedBox(width: 14),
         _BoosterButton(icon: Icons.track_changes_rounded, count: game.strikesLeft, enabled: game.canStrike, onTap: game.useStrike),
@@ -815,11 +836,41 @@ Widget _line(String k, String v, {bool bold = false}) => Padding(
   ),
 );
 
+Widget _panelButton(String label, Color color, VoidCallback onTap, {double height = 50, double size = 20}) => _Pressable(
+  onTap: onTap,
+  child: SizedBox(
+    height: height,
+    width: double.infinity,
+    child: WoodBox(color: color, radius: 14, seed: label.hashCode, child: Text(label, style: txt(size, weight: 700))),
+  ),
+);
+
+/// true = abandon the current game.
+Future<bool> confirmAbandon(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _Panel([
+        Text('Start over?', style: txt(26, weight: 700)),
+        const SizedBox(height: 10),
+        Text(
+          'Do you want to abandon this game and start new? Note that this will impact your stats.',
+          textAlign: TextAlign.center,
+          style: txt(16, weight: 400),
+        ),
+        const SizedBox(height: 18),
+        _panelButton('Here We Go Again', Wood.green, () => Navigator.pop(ctx, true)),
+        const SizedBox(height: 10),
+        _panelButton('Then I Will Finish', Wood.oak, () => Navigator.pop(ctx, false), height: 44, size: 18),
+      ]),
+    ) ??
+    false;
+
 class _ResultDialog extends StatelessWidget {
   final Game game;
   final Stats stats;
+  final String? meaning;
   final VoidCallback onNew, onHome;
-  const _ResultDialog(this.game, this.stats, {required this.onNew, required this.onHome});
+  const _ResultDialog(this.game, this.stats, this.meaning, {required this.onNew, required this.onHome});
 
   @override
   Widget build(BuildContext context) {
@@ -839,6 +890,10 @@ class _ResultDialog extends StatelessWidget {
             ),
         ],
       ),
+      if (s != null && meaning != null) ...[
+        const SizedBox(height: 8),
+        Text(meaning!, textAlign: TextAlign.center, style: txt(15, color: Wood.walnut, weight: 400).copyWith(fontStyle: FontStyle.italic)),
+      ],
       const SizedBox(height: 14),
       if (s != null) ...[
         _line('Solved in row ${game.guesses.length}/${game.length}', '+${s.guessPts.round()}'),
@@ -850,35 +905,11 @@ class _ResultDialog extends StatelessWidget {
       ] else
         _line('Score', '0', bold: true),
       const SizedBox(height: 6),
-      _line('Streak', '${stats.streak}'),
+      _line('Daily streak', '${stats.streakOn(DateTime.now())}'),
       const SizedBox(height: 16),
-      _Pressable(
-        onTap: onNew,
-        child: SizedBox(
-          height: 50,
-          width: double.infinity,
-          child: WoodBox(
-            color: Wood.green,
-            radius: 14,
-            seed: 3,
-            child: Text('New Game', style: txt(20, weight: 700)),
-          ),
-        ),
-      ),
+      _panelButton('New Game', Wood.green, onNew),
       const SizedBox(height: 10),
-      _Pressable(
-        onTap: onHome,
-        child: SizedBox(
-          height: 44,
-          width: double.infinity,
-          child: WoodBox(
-            color: Wood.oak,
-            radius: 14,
-            seed: 4,
-            child: Text('Home', style: txt(18, weight: 700)),
-          ),
-        ),
-      ),
+      _panelButton('Home', Wood.oak, onHome, height: 44, size: 18),
     ]);
   }
 }
@@ -890,12 +921,11 @@ class _StatsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = stats;
-    final top = max(1, s.hist.reduce(max));
     Widget cell(String v, String k) => Expanded(
       child: Column(
         children: [
           Text(v, style: txt(24, weight: 700)),
-          Text(k, style: txt(12, color: Wood.walnut, weight: 400)),
+          Text(k, textAlign: TextAlign.center, style: txt(12, color: Wood.walnut, weight: 400)),
         ],
       ),
     );
@@ -906,49 +936,24 @@ class _StatsDialog extends StatelessWidget {
         children: [
           cell('${s.played}', 'Played'),
           cell(s.played == 0 ? '0' : '${(100 * s.wins / s.played).round()}', 'Win %'),
-          cell('${s.streak}', 'Streak'),
+          cell('${s.dnf}', 'DNF'),
         ],
       ),
       const SizedBox(height: 10),
       Row(
         children: [
+          cell('${s.streakOn(DateTime.now())}', 'Daily streak'),
           cell('${s.maxStreak}', 'Max streak'),
+          cell(s.avgLength.toStringAsFixed(1), 'Avg word length'),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
           cell('${s.best}', 'Best'),
           cell(s.wins == 0 ? '0' : '${(s.total / s.wins).round()}', 'Avg score'),
         ],
       ),
-      const SizedBox(height: 16),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: Text('Solved in row', style: txt(16)),
-      ),
-      const SizedBox(height: 6),
-      for (var i = 0; i < 7; i++)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            children: [
-              SizedBox(width: 18, child: Text('${i + 1}', style: txt(14))),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FractionallySizedBox(
-                    widthFactor: 0.08 + 0.92 * s.hist[i] / top,
-                    child: SizedBox(
-                      height: 20,
-                      child: WoodBox(
-                        color: s.hist[i] > 0 ? Wood.green : Wood.birch,
-                        radius: 4,
-                        seed: i,
-                        child: Text('${s.hist[i]}', style: txt(12)),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
     ]);
   }
 }

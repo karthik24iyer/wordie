@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 /// Ordered so a key can keep the "best" state it has seen.
 enum LetterState { none, absent, present, correct }
 
-enum Status { playing, won, lost }
+enum Status { playing, won, lost, dnf }
 
 /// Standard Wordle colouring incl. duplicates: greens first, then yellows
 /// only while unmatched copies of that letter remain in the answer.
@@ -184,6 +184,16 @@ class Game extends ChangeNotifier {
     return null;
   }
 
+  /// Gives up: fills the current row with the answer in green and ends the game as a DNF.
+  void forfeit() {
+    if (status != Status.playing) return;
+    guesses.add(answer);
+    results.add(List.filled(length, LetterState.correct));
+    status = Status.dnf;
+    _resetRow();
+    notifyListeners();
+  }
+
   void useHint() {
     if (!canHint) return;
     final options = _hintable.toList();
@@ -208,41 +218,64 @@ class Game extends ChangeNotifier {
   }
 }
 
-class Stats {
-  int played = 0, wins = 0, streak = 0, maxStreak = 0, best = 0, total = 0;
-  List<int> hist = List.filled(7, 0); // wins by row 1..7
+String _day(DateTime d) => DateTime(d.year, d.month, d.day).toIso8601String().substring(0, 10);
 
-  void record(Game g) {
+class Stats {
+  // streak = consecutive days with at least one finished (won/lost) game; a DNF alone doesn't count
+  int played = 0, wins = 0, dnf = 0, streak = 0, maxStreak = 0, best = 0, total = 0, lenSum = 0, lenWins = 0;
+  String? lastDay; // day of the last finished game
+
+  /// Current daily streak: 0 once a whole day passes without finishing a game.
+  int streakOn(DateTime now) =>
+      lastDay == _day(now) || lastDay == _day(DateTime(now.year, now.month, now.day - 1)) ? streak : 0;
+
+  double get avgLength => lenWins == 0 ? 0 : lenSum / lenWins;
+
+  void record(Game g, [DateTime? now]) {
+    now ??= DateTime.now();
     played++;
+    if (g.status == Status.dnf) {
+      dnf++;
+      return;
+    }
     final s = g.result;
     if (s != null) {
       wins++;
-      streak++;
-      maxStreak = max(maxStreak, streak);
       best = max(best, s.total);
       total += s.total;
-      hist[g.guesses.length - 1]++;
-    } else {
-      streak = 0;
+      lenSum += g.length;
+      lenWins++;
+    }
+    if (lastDay != _day(now)) {
+      streak = streakOn(now) + 1;
+      lastDay = _day(now);
+      maxStreak = max(maxStreak, streak);
     }
   }
 
+  // ponytail: old win-streak keys ('streak'/'maxStreak'/'hist') are just ignored; lenWins starts at 0 as old wins have no length
   Map<String, dynamic> toJson() => {
     'played': played,
     'wins': wins,
-    'streak': streak,
-    'maxStreak': maxStreak,
+    'dnf': dnf,
+    'dayStreak': streak,
+    'maxDayStreak': maxStreak,
+    'lastDay': lastDay,
     'best': best,
     'total': total,
-    'hist': hist,
+    'lenSum': lenSum,
+    'lenWins': lenWins,
   };
   Stats();
   Stats.fromJson(Map<String, dynamic> j)
     : played = j['played'] ?? 0,
       wins = j['wins'] ?? 0,
-      streak = j['streak'] ?? 0,
-      maxStreak = j['maxStreak'] ?? 0,
+      dnf = j['dnf'] ?? 0,
+      streak = j['dayStreak'] ?? 0,
+      maxStreak = j['maxDayStreak'] ?? 0,
+      lastDay = j['lastDay'],
       best = j['best'] ?? 0,
       total = j['total'] ?? 0,
-      hist = List<int>.from(j['hist'] ?? List.filled(7, 0));
+      lenSum = j['lenSum'] ?? 0,
+      lenWins = j['lenWins'] ?? 0;
 }
