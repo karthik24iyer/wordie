@@ -451,15 +451,15 @@ class _GameScreenState extends State<GameScreen> {
         );
       }
       final letter = current ? game.row[c] : null;
-      final hinted = current && game.hinted.contains(c);
+      final ghost = current && letter == null && game.hinted.contains(c); // placeholder until something is typed here
       return _Tile(
         key: ValueKey('$key-$letter'),
-        letter: letter,
-        color: hinted ? Wood.green : (letter == null ? Wood.birch : Wood.oak),
+        letter: ghost ? game.answer[c] : letter,
+        color: ghost ? Wood.green : (letter == null ? Wood.birch : Wood.oak),
         raised: letter != null,
         size: size,
         seed: r * 10 + c,
-        pop: letter != null && !hinted,
+        pop: letter != null,
       );
     }
 
@@ -561,26 +561,23 @@ class _Keyboard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 4),
         child: _Pressable(
-          onTap: struck ? null : onTap,
+          onTap: onTap,
           child: SizedBox(
             height: 54,
-            child: Opacity(
-              opacity: struck ? 0.45 : 1,
-              child: WoodBox(
-                color: color ?? Wood.oak,
-                radius: 7,
-                seed: label.hashCode,
-                child: icon != null
-                    ? Icon(icon, color: Wood.ink, size: 22)
-                    : Text(
-                        label.toUpperCase(),
-                        style: txt(label.length > 1 ? 13 : 20, color: color == Wood.grey ? Colors.white : Wood.ink).copyWith(
-                          decoration: struck ? TextDecoration.lineThrough : null,
-                          decorationThickness: 3,
-                          decorationColor: Wood.ink,
-                        ),
+            child: WoodBox(
+              color: color ?? Wood.oak,
+              radius: 7,
+              seed: label.hashCode,
+              child: icon != null
+                  ? Icon(icon, color: Wood.ink, size: 22)
+                  : Text(
+                      label.toUpperCase(),
+                      style: txt(label.length > 1 ? 13 : 20, color: color == Wood.grey ? Colors.white : Wood.ink).copyWith(
+                        decoration: struck ? TextDecoration.lineThrough : null,
+                        decorationThickness: 3,
+                        decorationColor: color == Wood.grey ? Colors.white : Wood.ink,
                       ),
-              ),
+                    ),
             ),
           ),
         ),
@@ -952,6 +949,7 @@ class _StatsDialog extends StatelessWidget {
         children: [
           cell('${s.best}', 'Best'),
           cell(s.wins == 0 ? '0' : '${(s.total / s.wins).round()}', 'Avg score'),
+          cell('${s.noHints}', 'No hints used'),
         ],
       ),
     ]);

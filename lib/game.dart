@@ -52,21 +52,26 @@ class Score {
   const Score(this.guessPts, this.hintCost, this.strikeCost, this.mult, this.total);
 }
 
-/// See plan: later rows are cheaper for boosters, fewer guesses and longer words score more.
+/// Each hint keeps this fraction of the guess points. ponytail: single tuning knob.
+const hintFactor = 0.5;
+
+/// Fewer guesses and longer words score more. Each hint halves the guess
+/// points (whenever used); strikes are a flat cost, cheaper the later you use them.
 Score score(int length, int solvedRow, List<Booster> used) {
   final l = length;
   double late(int row) => (l - row + 1) / l;
   final guessPts = 1000 * late(solvedRow);
-  var hint = 0.0, strike = 0.0;
+  var hints = 0, strike = 0.0;
   for (final b in used) {
     if (b.hint) {
-      hint += 200 * late(b.row);
+      hints++;
     } else {
       strike += 60 * b.letters * late(b.row);
     }
   }
+  final hint = guessPts * (1 - pow(hintFactor, hints));
   final mult = 1 + 0.25 * (l - 4);
-  final total = (mult * max(guessPts - hint - strike, 50)).round();
+  final total = (mult * max(guessPts - hint - strike, 50) / 5).round() * 5;
   return Score(guessPts, hint, strike, mult, total);
 }
 
@@ -80,7 +85,7 @@ class Game extends ChangeNotifier {
   final results = <List<LetterState>>[];
   final keys = <String, LetterState>{};
   final struck = <String>{};
-  final hinted = <int>{}; // positions revealed by hints; pre-filled in every later row
+  final hinted = <int>{}; // positions revealed by hints; shown as placeholders in empty cells, never locked in
   final used = <Booster>[];
   late List<String?> row;
   Status status = Status.playing;
@@ -124,7 +129,7 @@ class Game extends ChangeNotifier {
   int get strikesLeft => config.strikeTaps - used.where((b) => !b.hint).length;
   Score? get result => status == Status.won ? score(length, guesses.length, used) : null;
 
-  void _resetRow() => row = [for (var i = 0; i < length; i++) hinted.contains(i) ? answer[i] : null];
+  void _resetRow() => row = List.filled(length, null);
 
   Iterable<int> get _hintable sync* {
     for (var i = 0; i < length; i++) {
@@ -144,7 +149,7 @@ class Game extends ChangeNotifier {
   bool get canSubmit => status == Status.playing && !row.contains(null) && dictionary.contains(row.join());
 
   void type(String letter) {
-    if (status != Status.playing || struck.contains(letter)) return;
+    if (status != Status.playing) return;
     final i = row.indexOf(null);
     if (i == -1) return;
     row[i] = letter;
@@ -153,7 +158,7 @@ class Game extends ChangeNotifier {
 
   void backspace() {
     for (var i = length - 1; i >= 0; i--) {
-      if (row[i] != null && !hinted.contains(i)) {
+      if (row[i] != null) {
         row[i] = null;
         notifyListeners();
         return;
@@ -199,7 +204,6 @@ class Game extends ChangeNotifier {
     final options = _hintable.toList();
     final i = options[_rng.nextInt(options.length)];
     hinted.add(i);
-    row[i] = answer[i];
     keys[answer[i]] = LetterState.correct;
     used.add((hint: true, row: rowIndex + 1, letters: 0));
     notifyListeners();
@@ -209,10 +213,7 @@ class Game extends ChangeNotifier {
     if (!canStrike) return;
     final options = _strikeable.toList()..shuffle(_rng);
     final hit = options.take(config.strikeLetters).toList();
-    struck.addAll(hit);
-    for (var i = 0; i < length; i++) {
-      if (hit.contains(row[i])) row[i] = null; // clear struck letters already typed
-    }
+    struck.addAll(hit); // still typeable, like any grey letter
     used.add((hint: false, row: rowIndex + 1, letters: hit.length));
     notifyListeners();
   }
@@ -222,7 +223,7 @@ String _day(DateTime d) => DateTime(d.year, d.month, d.day).toIso8601String().su
 
 class Stats {
   // streak = consecutive days with at least one finished (won/lost) game; a DNF alone doesn't count
-  int played = 0, wins = 0, dnf = 0, streak = 0, maxStreak = 0, best = 0, total = 0, lenSum = 0, lenWins = 0;
+  int played = 0, wins = 0, dnf = 0, noHints = 0, streak = 0, maxStreak = 0, best = 0, total = 0, lenSum = 0, lenWins = 0;
   String? lastDay; // day of the last finished game
 
   /// Current daily streak: 0 once a whole day passes without finishing a game.
@@ -238,6 +239,7 @@ class Stats {
       dnf++;
       return;
     }
+    if (!g.used.any((b) => b.hint)) noHints++;
     final s = g.result;
     if (s != null) {
       wins++;
@@ -258,6 +260,7 @@ class Stats {
     'played': played,
     'wins': wins,
     'dnf': dnf,
+    'noHints': noHints,
     'dayStreak': streak,
     'maxDayStreak': maxStreak,
     'lastDay': lastDay,
@@ -271,6 +274,7 @@ class Stats {
     : played = j['played'] ?? 0,
       wins = j['wins'] ?? 0,
       dnf = j['dnf'] ?? 0,
+      noHints = j['noHints'] ?? 0,
       streak = j['dayStreak'] ?? 0,
       maxStreak = j['maxDayStreak'] ?? 0,
       lastDay = j['lastDay'],

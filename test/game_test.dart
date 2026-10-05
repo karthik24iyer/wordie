@@ -16,8 +16,8 @@ void main() {
 
   test('score matches plan examples', () {
     expect(score(5, 3, []).total, 750);
-    expect(score(5, 3, [(hint: true, row: 2, letters: 0)]).total, 550);
-    expect(score(5, 3, [(hint: true, row: 3, letters: 0)]).total, 600);
+    expect(score(5, 3, [(hint: true, row: 2, letters: 0)]).total, 375); // one hint halves
+    expect(score(5, 3, List.filled(2, (hint: true, row: 3, letters: 0))).total, 190); // two quarter
     expect(score(5, 1, [(hint: false, row: 1, letters: 3)]).total, 1025); // (1000-180)*1.25
     expect(score(4, 4, List.filled(3, (hint: true, row: 1, letters: 0))).total, 50); // floor
   });
@@ -31,14 +31,37 @@ void main() {
       expect(g.struck.length, 15);
       expect(g.struck.any('apple'.contains), isFalse);
       expect(g.canStrike, isFalse);
+      final x = g.struck.first;
+      g.type(x);
+      expect(g.row.first, x); // struck letters are still typeable
+      g.backspace();
       for (var i = 0; i < 5; i++) {
         g.useHint();
       }
-      expect(g.row.join(), 'apple');
+      expect(g.hinted.length, 5);
+      expect(g.row.contains(null), isTrue); // hints are placeholders, not typed letters
       expect(g.canHint, isFalse);
+      for (final ch in 'apple'.split('')) {
+        g.type(ch);
+      }
       expect(g.submit(), isNull);
       expect(g.status, Status.won);
     }
+  });
+
+  test('hinted cell can be overwritten and backspaced', () {
+    final g = Game('apple', const GameConfig(hints: 5), {'apple', 'zebra'}, Random(0));
+    for (var i = 0; i < 5; i++) {
+      g.useHint();
+    }
+    for (final ch in 'zebra'.split('')) {
+      g.type(ch);
+    }
+    expect(g.row.join(), 'zebra');
+    for (var i = 0; i < 5; i++) {
+      g.backspace();
+    }
+    expect(g.row.every((c) => c == null), isTrue);
   });
 
   test('rejects unknown words and loses after length rows', () {
@@ -114,5 +137,9 @@ void main() {
 
     final r = Stats.fromJson(jsonDecode(jsonEncode(st.toJson())));
     expect([r.streak, r.maxStreak, r.lastDay, r.dnf, r.avgLength], [1, 2, '2026-03-05', 2, st.avgLength]);
+
+    st.record(Game('apple', const GameConfig(), {'apple'})..useHint()..row = 'apple'.split('')..submit(), DateTime(2026, 3, 5));
+    expect([st.noHints, st.wins], [4, 5]); // DNF and hinted games don't count
+    expect(Stats.fromJson(jsonDecode(jsonEncode(st.toJson()))).noHints, 4);
   });
 }
