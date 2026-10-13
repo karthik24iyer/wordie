@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wordie/game.dart';
+import 'package:wordsim/game.dart';
 
 const c = LetterState.correct, p = LetterState.present, a = LetterState.absent;
 

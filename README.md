@@ -1,4 +1,4 @@
-# Wordie
+# Wordsim
 
 A cozy Wordle-style word game in Flutter — wooden tiles on a pastel board.
 

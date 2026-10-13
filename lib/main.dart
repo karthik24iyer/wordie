@@ -24,7 +24,7 @@ void main() async {
   final (words, meanings, prefs) = (await loadWords(), await loadMeanings(), await SharedPreferences.getInstance());
   runApp(
     MaterialApp(
-      title: 'Wordie',
+      title: 'Wordsim',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'Fredoka',

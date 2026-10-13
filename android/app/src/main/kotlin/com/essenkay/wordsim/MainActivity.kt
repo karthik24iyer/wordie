@@ -1,4 +1,4 @@
-package com.wordie.wordie
+package com.essenkay.wordsim
 
 import io.flutter.embedding.android.FlutterActivity
 

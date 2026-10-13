@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wordie/game.dart';
-import 'package:wordie/main.dart' as app;
+import 'package:wordsim/game.dart';
+import 'package:wordsim/main.dart' as app;
 
 /// Full tap-through on a device/simulator. Seeds a saved game with a known answer so it's deterministic.
 void main() {

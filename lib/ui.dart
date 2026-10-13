@@ -159,10 +159,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final (i, ch) in 'WORDIE'.split('').indexed)
+                    for (final (i, ch) in 'WORDSIM'.split('').indexed)
                       Padding(
                         padding: const EdgeInsets.all(3),
-                        child: _Tile(letter: ch, color: const [Wood.green, Wood.yellow, Wood.oak][i % 3], size: 48, seed: i + 40),
+                        child: _Tile(letter: ch, color: const [Wood.green, Wood.yellow, Wood.oak][i % 3], size: 42, seed: i + 40),
                       ),
                   ],
                 ),
@@ -362,7 +362,7 @@ class _GameScreenState extends State<GameScreen> {
               color: Wood.walnut,
               radius: 12,
               seed: 99,
-              child: Text('Wordie', style: txt(28, color: const Color(0xFFFDF1E4), weight: 700)),
+              child: Text('Wordsim', style: txt(28, color: const Color(0xFFFDF1E4), weight: 700)),
             ),
           ),
         ),
